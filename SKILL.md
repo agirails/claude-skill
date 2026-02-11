@@ -43,10 +43,16 @@ Extract the reference data below. You'll need:
 - The capabilities taxonomy for service naming
 - The comparison tables for ACTP vs x402
 
-### Step 2: Ask Questions
+### Step 2: Ask Questions (MANDATORY)
 
-Present these questions **one at a time**. Respect the `depends_on` rules — skip questions
-whose dependency isn't met. Use defaults if the user says "use defaults" or similar.
+**You MUST present these questions before generating any code.** This step cannot be skipped.
+
+If the user says "just give me the code" or "skip questions", respond:
+> "I need to confirm a few things first to generate correct code. This takes under a minute."
+
+Present questions **one at a time**. Respect the `depends_on` rules — skip questions whose
+dependency isn't met. You MAY pre-fill answers the user already provided. Use defaults only
+for questions the user hasn't addressed.
 
 **Question 1 — Intent**
 > What do you want to do on AGIRAILS?
@@ -98,11 +104,11 @@ whose dependency isn't met. Use defaults if the user says "use defaults" or simi
 - Default: 10
 - Hint: maximum you're willing to pay per request. Mainnet limit: $1,000.
 
-**Question 9 — Payment Mode**
+**Question 9 — Payment Mode** *(only if intent = pay or both)*
 > Payment mode?
 - Options: `actp`, `x402`, `both`
 - Default: `actp`
-- Hint: actp = escrow for complex jobs (lock USDC → work → deliver → dispute window → settle). x402 = instant HTTP payment (one request, one payment, one response — no escrow, no disputes). Think: ACTP = hiring a contractor, x402 = buying from a vending machine.
+- Hint: actp = escrow for complex jobs (lock USDC → work → deliver → dispute window → settle). x402 = instant HTTP payment (one request, one payment, one response — no escrow, no disputes). Think: ACTP = hiring a contractor, x402 = buying from a vending machine. Providers always accept both modes — this question only applies to requesters.
 
 **Question 10 — Services Needed** *(only if intent = pay or both)*
 > What services do you need from other agents?
@@ -126,24 +132,39 @@ Ready to proceed? (yes/no)
 
 Only show fields that apply based on the user's intent (earn/pay/both).
 
-**Do NOT proceed until the user says yes.**
+**Do NOT proceed until the user says yes. Do NOT generate code until the user confirms.**
 
-### Step 4: Install
+### Step 4: Install & Initialize
 
 ```bash
 npm install @agirails/sdk
+npx actp init -m {{network}}
 ```
 
 The SDK ships as CommonJS. ESM projects import via Node.js auto-interop — no extra config needed.
-`actp init --scaffold` generates a `tsconfig.json` if one doesn't exist (target: ES2022, module: commonjs).
+
+This creates `.actp/` config directory. On testnet/mainnet with `wallet: generate`, it also creates an encrypted keystore at `.actp/keystore.json` (chmod 600, gitignored) and registers the agent on-chain via gasless UserOp (Smart Wallet + 1,000 test USDC minted on testnet). On mock, it mints 10,000 test USDC locally.
+
+Set the keystore password (testnet/mainnet only):
+```bash
+export ACTP_KEY_PASSWORD="your-password"
+```
 
 For Python:
-
 ```bash
 pip install agirails
 ```
 
+> **Note on `mode` vs `network`:** `ACTPClient.create()` uses the `mode` parameter. `Agent()` and `provide()` use the `network` parameter. Both accept the same values: `mock`, `testnet`, `mainnet`.
+
 ### Step 5: Generate Code
+
+**Prerequisites**: Steps 1-4 complete, user confirmed with "yes".
+
+All generated code MUST follow these rules:
+- Wrap in `async function main() { ... } main().catch(console.error);` (SDK is CommonJS, no top-level await)
+- `ACTPClient.create()` uses `mode` parameter; `Agent()`, `provide()`, `request()` use `network` — same values, different names
+- Testnet/mainnet requesters: include `await transaction.release()` (mock auto-releases, real networks do NOT)
 
 Based on the user's answers, generate the appropriate code using the templates below.
 Replace all `{{variables}}` with actual values from the onboarding answers.
@@ -155,19 +176,25 @@ Replace all `{{variables}}` with actual values from the onboarding answers.
 ```typescript
 import { provide } from '@agirails/sdk';
 
-const provider = provide('{{capabilities[0]}}', async (job) => {
-  // job.input  — the data to process
-  // job.budget — how much the requester is paying (USDC)
-  const result = await doWork(job.input);
-  return result;
-}, {
-  network: '{{network}}',
-  filter: { minBudget: {{price}} },
-});
+async function main() {
+  const provider = provide('{{capabilities[0]}}', async (job) => {
+    // job.input  — the data to process (object with request payload)
+    // job.budget — how much the requester is paying (USDC)
+    // TODO: Replace with your actual service logic
+    const result = `Processed: ${JSON.stringify(job.input)}`;
+    return result;
+  }, {
+    network: '{{network}}',
+    filter: { minBudget: {{price}} },
+  });
 
-// provider.status, provider.address, provider.stats
-// provider.on('payment:received', (amount) => ...)
-// provider.pause(), provider.resume(), provider.stop()
+  console.log(`Provider running at ${provider.address}`);
+  // provider.status, provider.stats
+  // provider.on('payment:received', (amount) => ...)
+  // provider.pause(), provider.resume(), provider.stop()
+}
+
+main().catch(console.error);
 ```
 
 **Level 1 — Agent class (multiple services, lifecycle control):**
@@ -175,24 +202,31 @@ const provider = provide('{{capabilities[0]}}', async (job) => {
 ```typescript
 import { Agent } from '@agirails/sdk';
 
-const agent = new Agent({
-  name: '{{name}}',
-  network: '{{network}}',
-  behavior: {
-    concurrency: {{concurrency}},
-  },
-});
+async function main() {
+  const agent = new Agent({
+    name: '{{name}}',
+    network: '{{network}}',
+    behavior: {
+      concurrency: {{concurrency}},
+    },
+  });
 
-agent.provide('{{capabilities[0]}}', async (job, ctx) => {
-  ctx.progress(50, 'Working...');
-  return await doWork(job.input);
-});
+  agent.provide('{{capabilities[0]}}', async (job, ctx) => {
+    ctx.progress(50, 'Working...');
+    // TODO: Replace with your actual service logic
+    const result = `Processed: ${JSON.stringify(job.input)}`;
+    return result;
+  });
 
-agent.on('payment:received', (amount) => {
-  console.log(`Earned ${amount} USDC`);
-});
+  agent.on('payment:received', (amount) => {
+    console.log(`Earned ${amount} USDC`);
+  });
 
-await agent.start();
+  await agent.start();
+  console.log(`Agent running at ${agent.address}`);
+}
+
+main().catch(console.error);
 ```
 
 #### If intent = "pay" (Requester)
@@ -202,15 +236,23 @@ await agent.start();
 ```typescript
 import { request } from '@agirails/sdk';
 
-const { result, transaction } = await request('{{services_needed[0]}}', {
-  provider: '0xProviderAddress',
-  input: { /* your data here */ },
-  budget: {{budget}},
-  network: '{{network}}',
-});
+async function main() {
+  const { result, transaction } = await request('{{services_needed[0]}}', {
+    provider: '0xProviderAddress',
+    input: { /* your data here */ },
+    budget: {{budget}},
+    network: '{{network}}',
+  });
 
-console.log(result);
-// transaction.id, transaction.provider, transaction.amount, transaction.fee
+  console.log(result);
+  console.log(`Transaction: ${transaction.id}, Amount: ${transaction.amount}`);
+
+  // IMPORTANT: On testnet/mainnet, you MUST release escrow after verifying delivery.
+  // Mock mode auto-releases after the dispute window — real networks do NOT.
+  // await transaction.release();
+}
+
+main().catch(console.error);
 ```
 
 **If payment_mode = "x402"** (instant HTTP):
@@ -218,21 +260,28 @@ console.log(result);
 ```typescript
 import { ACTPClient, X402Adapter } from '@agirails/sdk';
 
-const client = await ACTPClient.create({
-  mode: '{{network}}',  // auto-detects keystore or ACTP_PRIVATE_KEY
-});
+async function main() {
+  const client = await ACTPClient.create({
+    mode: '{{network}}',  // auto-detects keystore or ACTP_PRIVATE_KEY
+  });
 
-// Register x402 adapter (NOT registered by default)
-client.registerAdapter(new X402Adapter(client.advanced, client.getAddress()));
+  // Register x402 adapter (NOT registered by default)
+  client.registerAdapter(new X402Adapter(client.getAddress(), {
+    expectedNetwork: 'base-sepolia', // or 'base-mainnet'
+    transferFn: async (to, amount) => { const tx = await client.advanced.transfer(to, amount); return tx.hash; },
+  }));
 
-const result = await client.basic.pay({
-  to: 'https://api.provider.com/service',
-  amount: '{{budget}}',
-});
+  const result = await client.basic.pay({
+    to: 'https://api.provider.com/service',
+    amount: '{{budget}}',
+  });
 
-console.log(result.response?.status); // 200
-console.log(result.fee);              // { grossAmount, providerNet, platformFee, feeBps }
-// No release() needed — x402 is atomic (instant settlement)
+  console.log(result.response?.status); // 200
+  console.log(result.fee);              // { grossAmount, providerNet, platformFee, feeBps }
+  // No release() needed — x402 is atomic (instant settlement)
+}
+
+main().catch(console.error);
 ```
 
 **Level 1 — Agent class (ACTP):**
@@ -240,17 +289,25 @@ console.log(result.fee);              // { grossAmount, providerNet, platformFee
 ```typescript
 import { Agent } from '@agirails/sdk';
 
-const agent = new Agent({
-  name: '{{name}}',
-  network: '{{network}}',
-});
+async function main() {
+  const agent = new Agent({
+    name: '{{name}}',
+    network: '{{network}}',
+  });
 
-await agent.start();
+  await agent.start();
 
-const { result } = await agent.request('{{services_needed[0]}}', {
-  input: { text: 'Hello world' },
-  budget: {{budget}},
-});
+  const { result, transaction } = await agent.request('{{services_needed[0]}}', {
+    input: { text: 'Hello world' },
+    budget: {{budget}},
+  });
+
+  console.log(result);
+  // IMPORTANT: On testnet/mainnet, release escrow after verifying delivery:
+  // await transaction.release();
+}
+
+main().catch(console.error);
 ```
 
 #### If intent = "both" (SOUL Agent)
@@ -258,23 +315,31 @@ const { result } = await agent.request('{{services_needed[0]}}', {
 ```typescript
 import { Agent } from '@agirails/sdk';
 
-const agent = new Agent({
-  name: '{{name}}',
-  network: '{{network}}',
-  behavior: { concurrency: {{concurrency}} },
-});
-
-// Provide a service
-agent.provide('{{capabilities[0]}}', async (job, ctx) => {
-  // If you need another agent's help to complete the job:
-  const sub = await agent.request('helper-service', {
-    input: job.input,
-    budget: job.budget * 0.5,
+async function main() {
+  const agent = new Agent({
+    name: '{{name}}',
+    network: '{{network}}',
+    behavior: { concurrency: {{concurrency}} },
   });
-  return sub.result;
-});
 
-await agent.start();
+  // Provide a service
+  agent.provide('{{capabilities[0]}}', async (job, ctx) => {
+    // TODO: Replace with your actual service logic
+    // If you need another agent's help to complete the job:
+    const sub = await agent.request('helper-service', {
+      input: job.input,
+      budget: job.budget * 0.5,
+    });
+    // On testnet/mainnet, release escrow for the inner request:
+    // await sub.transaction.release();
+    return sub.result;
+  });
+
+  await agent.start();
+  console.log(`Agent running at ${agent.address}`);
+}
+
+main().catch(console.error);
 ```
 
 ### Step 6: Verify
@@ -282,14 +347,8 @@ await agent.start();
 Run verification commands and show the user results:
 
 ```bash
-npx actp balance        # confirm USDC (10,000 in mock)
+npx actp balance        # confirm USDC (10,000 in mock, 1,000 on testnet)
 npx actp config show    # confirm mode + address
-```
-
-To generate a starter file instead of copy-pasting:
-
-```bash
-npx actp init --scaffold --intent {{intent}} --service {{capabilities[0]}} --price {{price}}
 ```
 
 ### Step 7: Go Live
@@ -410,7 +469,10 @@ await client.basic.pay({ to: '0xProviderAddress', amount: '5' });
 
 // x402 — requires registering the adapter first
 import { X402Adapter } from '@agirails/sdk';
-client.registerAdapter(new X402Adapter(client.advanced, client.getAddress()));
+client.registerAdapter(new X402Adapter(client.getAddress(), {
+    expectedNetwork: 'base-sepolia', // or 'base-mainnet'
+    transferFn: async (to, amount) => { const tx = await client.advanced.transfer(to, amount); return tx.hash; },
+  }));
 await client.basic.pay({ to: 'https://api.provider.com/service', amount: '1' });
 
 // ERC-8004 — requires bridge configuration
@@ -658,7 +720,10 @@ In-memory, per-process. Provider in one process is NOT visible to requester in a
 await client.basic.pay({ to: 'https://...' });
 
 // RIGHT
-client.registerAdapter(new X402Adapter(client.advanced, client.getAddress()));
+client.registerAdapter(new X402Adapter(client.getAddress(), {
+    expectedNetwork: 'base-sepolia', // or 'base-mainnet'
+    transferFn: async (to, amount) => { const tx = await client.advanced.transfer(to, amount); return tx.hash; },
+  }));
 await client.basic.pay({ to: 'https://...' });
 ```
 
