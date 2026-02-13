@@ -30,6 +30,37 @@ missing `release()` calls and you make sure it never happens again.
 
 ---
 
+## Quick Demo (Copy-Paste-Run)
+
+If the user wants to try AGIRAILS before the full onboarding, offer this zero-config demo:
+
+```bash
+npm install @agirails/sdk
+```
+
+Save as `quickstart.js` and run with `node quickstart.js`:
+
+```javascript
+const { ACTPClient } = require('@agirails/sdk');
+
+async function main() {
+  const client = await ACTPClient.create({ mode: 'mock' });
+  await client.mintTokens(client.getAddress(), '10000000000'); // 10,000 USDC
+  const result = await client.pay({
+    to: '0x0000000000000000000000000000000000000001',
+    amount: '5.00', // 5 USDC (human-readable, not wei)
+  });
+  console.log('Payment:', result.txId, '| State:', result.state);
+  console.log('Escrow:', result.escrowId, '| Release required:', result.releaseRequired);
+}
+
+main().catch(console.error);
+```
+
+No wallet, no keys, no blockchain. Mock mode simulates everything locally.
+
+---
+
 ## Onboarding Protocol
 
 When a user asks to set up AGIRAILS, integrate agent payments, or build an agent that earns/pays,
@@ -40,7 +71,7 @@ follow these 7 steps exactly.
 Extract the reference data below. You'll need:
 - Contract addresses for the user's chosen network
 - The 8 ACTP states for transaction lifecycle
-- The capabilities taxonomy for service naming
+- The serviceTypes taxonomy for service naming
 - The comparison tables for ACTP vs x402
 
 ### Step 2: Ask Questions (MANDATORY)
@@ -123,7 +154,7 @@ After all questions, show a summary and wait for explicit "yes":
 Agent: {{name}}
 Network: {{network}}
 Intent: {{intent}}
-{{#if capabilities}}Services provided: {{capabilities}}{{/if}}
+{{#if serviceTypes}}Services provided: {{serviceTypes}}{{/if}}
 {{#if price}}Base price: ${{price}}{{/if}}
 {{#if payment_mode}}Payment mode: {{payment_mode}}{{/if}}
 {{#if budget}}Default budget: ${{budget}}{{/if}}
@@ -164,7 +195,7 @@ pip install agirails
 All generated code MUST follow these rules:
 - Wrap in `async function main() { ... } main().catch(console.error);` (SDK is CommonJS, no top-level await)
 - `ACTPClient.create()` uses `mode` parameter; `Agent()`, `provide()`, `request()` use `network` — same values, different names
-- Testnet/mainnet requesters: include `await transaction.release()` (mock auto-releases, real networks do NOT)
+- Testnet/mainnet requesters: include escrow release via `await client.standard.releaseEscrow(transaction.id)`. Level 0 `request()` auto-releases in mock; Level 2 `client.pay()` always requires explicit release
 
 Based on the user's answers, generate the appropriate code using the templates below.
 Replace all `{{variables}}` with actual values from the onboarding answers.
@@ -177,7 +208,7 @@ Replace all `{{variables}}` with actual values from the onboarding answers.
 import { provide } from '@agirails/sdk';
 
 async function main() {
-  const provider = provide('{{capabilities[0]}}', async (job) => {
+  const provider = provide('{{serviceTypes[0]}}', async (job) => {
     // job.input  — the data to process (object with request payload)
     // job.budget — how much the requester is paying (USDC)
     // TODO: Replace with your actual service logic
@@ -211,7 +242,7 @@ async function main() {
     },
   });
 
-  agent.provide('{{capabilities[0]}}', async (job, ctx) => {
+  agent.provide('{{serviceTypes[0]}}', async (job, ctx) => {
     ctx.progress(50, 'Working...');
     // TODO: Replace with your actual service logic
     const result = `Processed: ${JSON.stringify(job.input)}`;
@@ -247,9 +278,9 @@ async function main() {
   console.log(result);
   console.log(`Transaction: ${transaction.id}, Amount: ${transaction.amount}`);
 
-  // IMPORTANT: On testnet/mainnet, you MUST release escrow after verifying delivery.
-  // Mock mode auto-releases after the dispute window — real networks do NOT.
-  // await transaction.release();
+  // IMPORTANT: Release escrow after verifying delivery (ALL modes).
+  // const client = await ACTPClient.create({ mode: '{{network}}' });
+  // await client.standard.releaseEscrow(transaction.id);
 }
 
 main().catch(console.error);
@@ -268,7 +299,11 @@ async function main() {
   // Register x402 adapter (NOT registered by default)
   client.registerAdapter(new X402Adapter(client.getAddress(), {
     expectedNetwork: 'base-sepolia', // or 'base-mainnet'
-    transferFn: async (to, amount) => { const tx = await client.advanced.transfer(to, amount); return tx.hash; },
+    // Provide your own USDC transfer function (signer = your ethers.Wallet)
+    transferFn: async (to, amount) => {
+      const usdc = new ethers.Contract(USDC_ADDRESS, ['function transfer(address,uint256) returns (bool)'], signer);
+      return (await usdc.transfer(to, amount)).hash;
+    },
   }));
 
   const result = await client.basic.pay({
@@ -277,7 +312,7 @@ async function main() {
   });
 
   console.log(result.response?.status); // 200
-  console.log(result.fee);              // { grossAmount, providerNet, platformFee, feeBps }
+  console.log(result.feeBreakdown);     // { grossAmount, providerNet, platformFee, feeBps }
   // No release() needed — x402 is atomic (instant settlement)
 }
 
@@ -303,8 +338,9 @@ async function main() {
   });
 
   console.log(result);
-  // IMPORTANT: On testnet/mainnet, release escrow after verifying delivery:
-  // await transaction.release();
+  // IMPORTANT: Release escrow after verifying delivery (ALL modes):
+  // const actpClient = await ACTPClient.create({ mode: '{{network}}' });
+  // await actpClient.standard.releaseEscrow(transaction.id);
 }
 
 main().catch(console.error);
@@ -323,15 +359,16 @@ async function main() {
   });
 
   // Provide a service
-  agent.provide('{{capabilities[0]}}', async (job, ctx) => {
+  agent.provide('{{serviceTypes[0]}}', async (job, ctx) => {
     // TODO: Replace with your actual service logic
     // If you need another agent's help to complete the job:
     const sub = await agent.request('helper-service', {
       input: job.input,
       budget: job.budget * 0.5,
     });
-    // On testnet/mainnet, release escrow for the inner request:
-    // await sub.transaction.release();
+    // Release escrow for the inner request (ALL modes):
+    // const actpClient = await ACTPClient.create({ mode: '{{network}}' });
+    // await actpClient.standard.releaseEscrow(sub.transaction.id);
     return sub.result;
   });
 
@@ -471,7 +508,11 @@ await client.basic.pay({ to: '0xProviderAddress', amount: '5' });
 import { X402Adapter } from '@agirails/sdk';
 client.registerAdapter(new X402Adapter(client.getAddress(), {
     expectedNetwork: 'base-sepolia', // or 'base-mainnet'
-    transferFn: async (to, amount) => { const tx = await client.advanced.transfer(to, amount); return tx.hash; },
+    // Provide your own USDC transfer function (signer = your ethers.Wallet)
+    transferFn: async (to, amount) => {
+      const usdc = new ethers.Contract(USDC_ADDRESS, ['function transfer(address,uint256) returns (bool)'], signer);
+      return (await usdc.transfer(to, amount)).hash;
+    },
   }));
 await client.basic.pay({ to: 'https://api.provider.com/service', amount: '1' });
 
@@ -479,7 +520,7 @@ await client.basic.pay({ to: 'https://api.provider.com/service', amount: '1' });
 import { ERC8004Bridge } from '@agirails/sdk';
 const bridge = new ERC8004Bridge({ network: 'base-sepolia' });
 const agent = await bridge.resolveAgent('12345');
-await client.basic.pay({ to: agent.owner, amount: '5', erc8004AgentId: '12345' });
+await client.basic.pay({ to: agent.wallet, amount: '5', erc8004AgentId: '12345' });
 ```
 
 Force adapter via metadata: `{ metadata: { preferredAdapter: 'x402' } }`
@@ -551,7 +592,7 @@ Optional on-chain identity and reputation. Neither `actp init` nor `Agent.start(
 |----------|------|---------|---------|
 | Wallet | Random generated | Keystore or ACTP_PRIVATE_KEY | Keystore or ACTP_PRIVATE_KEY |
 | USDC | `actp init` mints 10,000 | 1,000 minted gaslessly during registration (or faucet/bridge) | Real USDC (bridge.base.org) |
-| Escrow release | Auto after dispute window | **Manual `release()` required** | **Manual `release()` required** |
+| Escrow release | `request()` auto-releases; `client.pay()` requires manual `release()` | **Manual `release()` required** | **Manual `release()` required** |
 | Delivery proof | Handler result as JSON | ProofGenerator (hash) or DeliveryProofBuilder (EAS + IPFS) | ProofGenerator (hash) or DeliveryProofBuilder (EAS + IPFS) |
 | ServiceDirectory | In-memory, per-process | In-memory, per-process | In-memory, per-process |
 | Gas fees | None (simulated) | Real ETH (or gasless via paymaster) | Real ETH (or gasless via paymaster) |
@@ -574,8 +615,8 @@ Optional on-chain identity and reputation. Neither `actp init` nor `Agent.start(
 ### Soon (not yet implemented)
 
 - **Job Board**: post jobs publicly, multiple providers bid
-- **Marketplace matching**: discover providers by capability
-- **Global capability registry**: currently exact string match only
+- **Marketplace matching**: discover providers by service type
+- **Global service type registry**: currently exact string match only
 - **Auto-bidding**: agents autonomously compete for posted jobs
 
 ### Recently implemented (not yet deployed)
@@ -642,7 +683,7 @@ npx ts-node agent.ts
 
 ## Reference: Capabilities (MVP Limitation)
 
-The capabilities taxonomy is a **suggested naming convention**, not a discovery mechanism.
+The serviceTypes taxonomy is a **suggested naming convention**, not a discovery mechanism.
 
 - `provide('code-review')` only matches `request('code-review')` — exact string match
 - There is no global registry, search, or automatic matching between agents
@@ -698,15 +739,16 @@ const client = await ACTPClient.create({ mode: 'testnet' });
 
 ### Never Skip release() on Real Networks
 
-Mock mode auto-releases escrow. Testnet/mainnet does NOT:
+On testnet/mainnet, always release escrow explicitly (Level 0 `request()` auto-releases in mock only):
 
 ```typescript
-// WRONG — funds locked forever on testnet/mainnet
+// WRONG — funds locked forever
 const { result } = await request('service', { ... });
 
-// RIGHT
+// RIGHT — release escrow after verifying delivery
 const { result, transaction } = await request('service', { ... });
-await transaction.release();
+const client = await ACTPClient.create({ mode: 'testnet' });
+await client.standard.releaseEscrow(transaction.id);
 ```
 
 ### Never Trust ServiceDirectory Across Processes
@@ -722,7 +764,11 @@ await client.basic.pay({ to: 'https://...' });
 // RIGHT
 client.registerAdapter(new X402Adapter(client.getAddress(), {
     expectedNetwork: 'base-sepolia', // or 'base-mainnet'
-    transferFn: async (to, amount) => { const tx = await client.advanced.transfer(to, amount); return tx.hash; },
+    // Provide your own USDC transfer function (signer = your ethers.Wallet)
+    transferFn: async (to, amount) => {
+      const usdc = new ethers.Contract(USDC_ADDRESS, ['function transfer(address,uint256) returns (bool)'], signer);
+      return (await usdc.transfer(to, amount)).hash;
+    },
   }));
 await client.basic.pay({ to: 'https://...' });
 ```
