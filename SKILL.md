@@ -4,15 +4,10 @@ description: |
   AI agent payment infrastructure — ACTP escrow, x402 instant payments, USDC settlement on Base L2.
   Interactive onboarding: asks your preferences, generates customized agent code, verifies setup.
   Covers provider/requester patterns, adapter routing, 8-state machine, pricing, disputes, and identity.
-  TRIGGER: "agirails", "ACTP", "agent payment", "agent escrow", "AI agent pay", "AI agent earn",
+  Use when: "agirails", "ACTP", "agent payment", "agent escrow", "AI agent pay", "AI agent earn",
   "x402", "agent commerce", "USDC agent", "on-chain settlement", "agent-to-agent payment",
   "provide service", "request service", "escrow USDC", "Base L2 payment",
   "@agirails/sdk", "actp init", "agent economy", "ERC-8004", "agent identity"
-version: 1.0.0
-author: AGIRAILS Team
-license: Apache-2.0
-tags: [AI-agents, payments, escrow, USDC, blockchain, Base-L2, ACTP, x402, ERC-8004, identity, settlement]
-dependencies: []
 ---
 
 # AGIRAILS — Agent Payment Infrastructure
@@ -42,10 +37,11 @@ Save as `quickstart.js` and run with `node quickstart.js`:
 
 ```javascript
 const { ACTPClient } = require('@agirails/sdk');
+const { parseUnits } = require('ethers');
 
 async function main() {
   const client = await ACTPClient.create({ mode: 'mock' });
-  await client.mintTokens(client.getAddress(), '10000000000'); // 10,000 USDC
+  await client.mintTokens(client.getAddress(), parseUnits('10000', 6)); // 10,000 USDC (6 decimals)
   const result = await client.pay({
     to: '0x0000000000000000000000000000000000000001',
     amount: '5.00', // 5 USDC (human-readable, not wei)
@@ -107,7 +103,7 @@ for questions the user hasn't addressed.
 > Wallet setup?
 - Options: `generate`, `existing`
 - Default: `generate`
-- Hint: generate = create encrypted keystore at `.actp/keystore.json` (chmod 600, gitignored), set `ACTP_KEY_PASSWORD` env var. existing = set `ACTP_PRIVATE_KEY` env var (0x-prefixed, 64 hex chars). SDK auto-detects: checks `ACTP_PRIVATE_KEY` first, falls back to keystore.
+- Hint: generate = create encrypted keystore at `.actp/keystore.json` (AES-128-CTR, chmod 600, gitignored), set `ACTP_KEY_PASSWORD` env var. existing = set `ACTP_PRIVATE_KEY` env var (testnet only — blocked on mainnet). For containers: `ACTP_KEYSTORE_BASE64` + `ACTP_KEY_PASSWORD`.
 
 **Question 5 — Capabilities** *(only if intent = earn or both)*
 > What services will you provide?
@@ -142,9 +138,10 @@ for questions the user hasn't addressed.
 - Hint: actp = escrow for complex jobs (lock USDC → work → deliver → dispute window → settle). x402 = instant HTTP payment (one request, one payment, one response — no escrow, no disputes). Think: ACTP = hiring a contractor, x402 = buying from a vending machine. Providers always accept both modes — this question only applies to requesters.
 
 **Question 10 — Services Needed** *(only if intent = pay or both)*
-> What services do you need from other agents?
-- Type: text (comma-separated)
-- Example: `translation, code-review`
+> What service do you need from other agents? (ask once per service)
+- Type: text
+- Hint: One service name per answer. If the user needs multiple, repeat this question.
+- Example: `code-review`
 
 ### Step 3: Confirm
 
@@ -208,7 +205,7 @@ Replace all `{{variables}}` with actual values from the onboarding answers.
 import { provide } from '@agirails/sdk';
 
 async function main() {
-  const provider = provide('{{serviceTypes[0]}}', async (job) => {
+  const provider = provide('{{serviceTypes}}', async (job) => {
     // job.input  — the data to process (object with request payload)
     // job.budget — how much the requester is paying (USDC)
     // TODO: Replace with your actual service logic
@@ -242,7 +239,7 @@ async function main() {
     },
   });
 
-  agent.provide('{{serviceTypes[0]}}', async (job, ctx) => {
+  agent.provide('{{serviceTypes}}', async (job, ctx) => {
     ctx.progress(50, 'Working...');
     // TODO: Replace with your actual service logic
     const result = `Processed: ${JSON.stringify(job.input)}`;
@@ -268,7 +265,7 @@ main().catch(console.error);
 import { request } from '@agirails/sdk';
 
 async function main() {
-  const { result, transaction } = await request('{{services_needed[0]}}', {
+  const { result, transaction } = await request('{{services_needed}}', {
     provider: '0xProviderAddress',
     input: { /* your data here */ },
     budget: {{budget}},
@@ -286,7 +283,7 @@ async function main() {
 main().catch(console.error);
 ```
 
-**If payment_mode = "x402"** (instant HTTP):
+**If payment_mode = "x402"** (instant HTTP — testnet/mainnet only, use ACTP for mock):
 
 ```typescript
 import { ACTPClient, X402Adapter } from '@agirails/sdk';
@@ -332,7 +329,7 @@ async function main() {
 
   await agent.start();
 
-  const { result, transaction } = await agent.request('{{services_needed[0]}}', {
+  const { result, transaction } = await agent.request('{{services_needed}}', {
     input: { text: 'Hello world' },
     budget: {{budget}},
   });
@@ -358,21 +355,24 @@ async function main() {
     behavior: { concurrency: {{concurrency}} },
   });
 
-  // Provide a service
-  agent.provide('{{serviceTypes[0]}}', async (job, ctx) => {
+  // Provide a service (earn USDC)
+  agent.provide('{{serviceTypes}}', async (job, ctx) => {
+    ctx.progress(50, 'Working...');
     // TODO: Replace with your actual service logic
-    // If you need another agent's help to complete the job:
-    const sub = await agent.request('helper-service', {
-      input: job.input,
-      budget: job.budget * 0.5,
-    });
-    // Release escrow for the inner request (ALL modes):
-    // const actpClient = await ACTPClient.create({ mode: '{{network}}' });
-    // await actpClient.standard.releaseEscrow(sub.transaction.id);
-    return sub.result;
+    const result = `Processed: ${JSON.stringify(job.input)}`;
+    return result;
   });
 
+  // Request a service from another agent (pay USDC)
   await agent.start();
+  const { result, transaction } = await agent.request('{{services_needed}}', {
+    input: { text: 'Hello world' },
+    budget: {{budget}},
+  });
+  console.log(result);
+  // IMPORTANT: Release escrow after verifying delivery (ALL modes):
+  // const actpClient = await ACTPClient.create({ mode: '{{network}}' });
+  // await actpClient.standard.releaseEscrow(transaction.id);
   console.log(`Agent running at ${agent.address}`);
 }
 
@@ -397,7 +397,8 @@ Show the user:
 - Then ask: **"Your agent is ready. Start it?"**
 
 ```bash
-npx ts-node agent.ts
+npx ts-node agent.ts   # TypeScript
+node agent.js           # JavaScript
 ```
 
 In mock mode, everything runs locally with simulated USDC. Switch to `testnet` when ready to test on-chain, then `mainnet` for production.
@@ -527,19 +528,26 @@ Force adapter via metadata: `{ metadata: { preferredAdapter: 'x402' } }`
 
 ## Reference: Key Management
 
-SDK auto-detects keys in this order:
+SDK auto-detects keys in this priority order:
 
-1. `ACTP_PRIVATE_KEY` env var (0x-prefixed, 64 hex chars)
-2. `.actp/keystore.json` + `ACTP_KEY_PASSWORD` env var
+1. `ACTP_PRIVATE_KEY` env var — **testnet only** (blocked on mainnet by fail-closed policy, warns on testnet)
+2. `ACTP_KEYSTORE_BASE64` + `ACTP_KEY_PASSWORD` — for Docker/Railway/serverless containers
+3. `.actp/keystore.json` + `ACTP_KEY_PASSWORD` — local encrypted keystore (recommended)
 
 ```bash
-# Generate keystore (recommended)
-npx actp init -m testnet    # creates .actp/keystore.json (chmod 600, gitignored)
+# Option A: Encrypted keystore (recommended)
+npx actp init -m testnet    # creates .actp/keystore.json (AES-128-CTR, chmod 600, gitignored)
 export ACTP_KEY_PASSWORD="your-password"
 
-# Or use existing key
+# Option B: For Docker/Railway/serverless
+export ACTP_KEYSTORE_BASE64="$(base64 < .actp/keystore.json)"
+export ACTP_KEY_PASSWORD="your-password"
+
+# Option C: Raw key (testnet only — blocked on mainnet)
 export ACTP_PRIVATE_KEY="0x..."
 ```
+
+**`ACTP_PRIVATE_KEY` policy**: mainnet = hard fail, testnet = warn once, mock = silent. Use encrypted keystores for production.
 
 Never hardcode keys. Never accept pasted keys interactively — use env vars only.
 
@@ -590,7 +598,7 @@ Optional on-chain identity and reputation. Neither `actp init` nor `Agent.start(
 
 | Behavior | Mock | Testnet | Mainnet |
 |----------|------|---------|---------|
-| Wallet | Random generated | Keystore or ACTP_PRIVATE_KEY | Keystore or ACTP_PRIVATE_KEY |
+| Wallet | Random generated | Keystore, ACTP_KEYSTORE_BASE64, or ACTP_PRIVATE_KEY | Keystore or ACTP_KEYSTORE_BASE64 (ACTP_PRIVATE_KEY blocked) |
 | USDC | `actp init` mints 10,000 | 1,000 minted gaslessly during registration (or faucet/bridge) | Real USDC (bridge.base.org) |
 | Escrow release | `request()` auto-releases; `client.pay()` requires manual `release()` | **Manual `release()` required** | **Manual `release()` required** |
 | Delivery proof | Handler result as JSON | ProofGenerator (hash) or DeliveryProofBuilder (EAS + IPFS) | ProofGenerator (hash) or DeliveryProofBuilder (EAS + IPFS) |
@@ -837,10 +845,11 @@ All commands support `--json` for machine-readable output and `-q`/`--quiet` for
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ACTP_KEY_PASSWORD` | For keystore | Decrypts `.actp/keystore.json` |
-| `ACTP_PRIVATE_KEY` | Alternative | Direct private key (0x-prefixed, 64 hex chars) |
-| `BASE_SEPOLIA_RPC` | Testnet | Custom RPC endpoint |
-| `BASE_MAINNET_RPC` | Mainnet | Custom RPC endpoint |
+| `ACTP_KEY_PASSWORD` | For keystore | Decrypts `.actp/keystore.json` (required for testnet/mainnet) |
+| `ACTP_KEYSTORE_BASE64` | For containers | Base64-encoded keystore (Docker/Railway/serverless) |
+| `ACTP_PRIVATE_KEY` | Testnet only | Raw private key — **blocked on mainnet** by fail-closed policy |
+| `BASE_SEPOLIA_RPC` | Optional | Custom testnet RPC (defaults to public Base Sepolia) |
+| `BASE_MAINNET_RPC` | Optional | Custom mainnet RPC (defaults to public Base Mainnet) |
 
 ## Discovery (Optional)
 

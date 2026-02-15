@@ -98,7 +98,7 @@ curl -sL https://raw.githubusercontent.com/agirails/claude-skill/main/SKILL.md \
 | **Cost to start** | Free | Free (1,000 USDC minted during registration) | Real USDC |
 | **Gas** | Simulated | Sponsored (paymaster) or ETH | Sponsored (paymaster) or ETH |
 | **USDC** | 10,000 auto-minted | 1,000 minted gaslessly on registration | bridge.base.org |
-| **Escrow** | Auto-releases | Manual `release()` | Manual `release()` |
+| **Escrow** | `request()` auto-releases; `client.pay()` manual | Manual `release()` | Manual `release()` |
 | **Tx limit** | None | None | $1,000 |
 
 ## Trigger Keywords
