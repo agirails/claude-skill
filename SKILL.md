@@ -651,7 +651,7 @@ Optional on-chain identity and reputation. Neither `actp init` nor `Agent.start(
 | MockUSDC | `0x444b4e1A65949AB2ac75979D5d0166Eb7A248Ccb` |
 | X402Relay | `0x4DCD02b276Dbeab57c265B72435e90507b6Ac81A` |
 | AgentRegistry | `0xDd6D66924B43419F484aE981F174b803487AF25A` |
-| ArchiveTreasury | `0xeB75DE7cF5ce77ab15BB0fFa3a2A79e6aaa554B0` |
+| ArchiveTreasury | `0xACB672de092beaAE2cd286dD61Cb2352AF7159F1` |
 | ERC-8004 Identity | `0x8004A818BFB912233c491871b3d84c89A494BD9e` |
 | ERC-8004 Reputation | `0x8004B663056A597Dffe9eCcC1965A193B7388713` |
 
