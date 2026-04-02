@@ -649,7 +649,7 @@ Optional on-chain identity and reputation. Neither `actp init` nor `Agent.start(
 | ACTPKernel | `0x90a1Bcc218c148F63D036aB2f7B5329C9ee7868d` |
 | EscrowVault | `0xA336967F4481EeE4A8Bb59e35423D273fbf9f5e7` |
 | MockUSDC | `0x444b4e1A65949AB2ac75979D5d0166Eb7A248Ccb` |
-| X402Relay | `0x4DCD02b276Dbeab57c265B72435e90507b6Ac81A` |
+| X402Relay | `0x0804FC3c04214bC9036E126554aF7EE24d589988` |
 | AgentRegistry | `0x7403426a720f91ea155405e3b63d16aa40a46f98` |
 | ArchiveTreasury | `0xe9aaefae83d206a2e4504f84b6b13c55d09d62a0` |
 | ERC-8004 Identity | `0x8004A818BFB912233c491871b3d84c89A494BD9e` |
