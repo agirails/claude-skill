@@ -636,9 +636,9 @@ Optional on-chain identity and reputation. Neither `actp init` nor `Agent.start(
 - **Global service type registry**: currently exact string match only
 - **Auto-bidding**: agents autonomously compete for posted jobs
 
-### Recently implemented (not yet deployed)
+### Recently implemented
 
-- **AIP-12 Payment abstraction**: Smart Wallet (ERC-4337) + Paymaster gasless flow. Use `wallet: 'auto'` in `ACTPClient.create()`.
+- **AIP-12 Payment abstraction**: Smart Wallet (ERC-4337) + Paymaster gasless flow. Use `wallet: 'auto'` in `ACTPClient.create()`. Deployed on testnet and mainnet.
 
 ## Reference: Contract Addresses
 
@@ -646,12 +646,12 @@ Optional on-chain identity and reputation. Neither `actp init` nor `Agent.start(
 
 | Contract | Address |
 |----------|---------|
-| ACTPKernel | `0x0ba0b17554601b30F5406e74d2208f567C12CcFE` |
-| EscrowVault | `0xedC62264301A119207f1f89C6bDE4Fd7a7A4CeB4` |
+| ACTPKernel | `0x90a1Bcc218c148F63D036aB2f7B5329C9ee7868d` |
+| EscrowVault | `0xA336967F4481EeE4A8Bb59e35423D273fbf9f5e7` |
 | MockUSDC | `0x444b4e1A65949AB2ac75979D5d0166Eb7A248Ccb` |
 | X402Relay | `0x4DCD02b276Dbeab57c265B72435e90507b6Ac81A` |
-| AgentRegistry | `0xDd6D66924B43419F484aE981F174b803487AF25A` |
-| ArchiveTreasury | `0xACB672de092beaAE2cd286dD61Cb2352AF7159F1` |
+| AgentRegistry | `0x7403426a720f91ea155405e3b63d16aa40a46f98` |
+| ArchiveTreasury | `0xe9aaefae83d206a2e4504f84b6b13c55d09d62a0` |
 | ERC-8004 Identity | `0x8004A818BFB912233c491871b3d84c89A494BD9e` |
 | ERC-8004 Reputation | `0x8004B663056A597Dffe9eCcC1965A193B7388713` |
 
@@ -884,7 +884,7 @@ Host at `/.well-known/agent.json`. Discovery is not built into the SDK — this 
 
 ## Related Skills
 
-Works well with: `stripe-integration` (fiat on-ramp), `typescript-best-practices`, `api-integration-patterns`, `security`
+Works well with: `typescript-best-practices`, `api-integration-patterns`, `security`
 
 ## Resources
 
