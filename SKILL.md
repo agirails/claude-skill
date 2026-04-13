@@ -295,26 +295,17 @@ main().catch(console.error);
 **If payment_mode = "x402"** (instant HTTP — testnet/mainnet only, use ACTP for mock):
 
 ```typescript
-import { ACTPClient, X402Adapter } from '@agirails/sdk';
+import { ACTPClient } from '@agirails/sdk';
 
 async function main() {
   const client = await ACTPClient.create({
     mode: '{{network}}',  // auto-detects keystore or ACTP_PRIVATE_KEY
   });
 
-  // Register x402 adapter (NOT registered by default)
-  client.registerAdapter(new X402Adapter(client.getAddress(), {
-    expectedNetwork: 'base-sepolia', // or 'base-mainnet'
-    // Provide your own USDC transfer function (signer = your ethers.Wallet)
-    transferFn: async (to, amount) => {
-      const usdc = new ethers.Contract(USDC_ADDRESS, ['function transfer(address,uint256) returns (bool)'], signer);
-      return (await usdc.transfer(to, amount)).hash;
-    },
-  }));
-
-  const result = await client.basic.pay({
+  // X402Adapter is auto-registered when wallet provider is present (SDK 3.3.0+)
+  const result = await client.pay({
     to: 'https://api.provider.com/service',
-    amount: '{{budget}}',
+    metadata: { paymentMethod: 'x402' },  // explicit opt-in
   });
 
   console.log(result.response?.status); // 200
@@ -506,34 +497,23 @@ In mock mode, `request()` auto-releases after dispute window. On testnet/mainnet
 
 | `to` value | Adapter | Registration |
 |------------|---------|--------------|
-| `0x1234...` (Ethereum address) | ACTP (basic/standard) | Default — no setup needed |
-| `https://api.example.com/...` | x402 instant | **Must register** `X402Adapter` via `client.registerAdapter()` |
+| `0x1234...` (Ethereum address) | ACTP (basic/standard) | Auto-registered |
+| `https://api.example.com/...` | x402 instant | Auto-registered (SDK 3.3.0+) — requires `metadata: { paymentMethod: 'x402' }` opt-in |
 | Agent ID | ERC-8004 resolve → ACTP | **Must configure** ERC-8004 bridge |
 
 ```typescript
 // ACTP — works out of the box
-await client.basic.pay({ to: '0xProviderAddress', amount: '5' });
+await client.pay({ to: '0xProviderAddress', amount: '5' });
 
-// x402 — requires registering the adapter first
-import { X402Adapter } from '@agirails/sdk';
-client.registerAdapter(new X402Adapter(client.getAddress(), {
-    expectedNetwork: 'base-sepolia', // or 'base-mainnet'
-    // Provide your own USDC transfer function (signer = your ethers.Wallet)
-    transferFn: async (to, amount) => {
-      const usdc = new ethers.Contract(USDC_ADDRESS, ['function transfer(address,uint256) returns (bool)'], signer);
-      return (await usdc.transfer(to, amount)).hash;
-    },
-  }));
-await client.basic.pay({ to: 'https://api.provider.com/service', amount: '1' });
+// x402 — auto-registered, explicit opt-in required
+await client.pay({ to: 'https://api.provider.com/service', metadata: { paymentMethod: 'x402' } });
 
 // ERC-8004 — requires bridge configuration
 import { ERC8004Bridge } from '@agirails/sdk';
 const bridge = new ERC8004Bridge({ network: 'base-sepolia' });
 const agent = await bridge.resolveAgent('12345');
-await client.basic.pay({ to: agent.wallet, amount: '5', erc8004AgentId: '12345' });
+await client.pay({ to: agent.wallet, amount: '5', erc8004AgentId: '12345' });
 ```
-
-Force adapter via metadata: `{ metadata: { preferredAdapter: 'x402' } }`
 
 ## Reference: Key Management
 
@@ -677,7 +657,7 @@ npx ts-node agent.ts
 
 **There is no provider discovery.** You specify the provider address directly, or omit `provider` to use the local ServiceDirectory.
 
-**For instant API payments (x402):** Register `X402Adapter` via `client.registerAdapter()`, then use `client.basic.pay({ to: 'https://...' })`.
+**For instant API payments (x402):** X402Adapter is auto-registered on testnet/mainnet (SDK 3.3.0+). Use `client.pay({ to: 'https://...', metadata: { paymentMethod: 'x402' } })`.
 
 **Testnet/mainnet limitation:** `request()` does not auto-release escrow — you must call `release()` manually after verifying delivery.
 
@@ -758,19 +738,11 @@ In-memory, per-process. Provider in one process is NOT visible to requester in a
 ### Never Use x402 Without Registering the Adapter
 
 ```typescript
-// WRONG — "No adapter found for URL"
-await client.basic.pay({ to: 'https://...' });
+// WRONG — missing opt-in, will throw X402ConfigError
+await client.pay({ to: 'https://...' });
 
-// RIGHT
-client.registerAdapter(new X402Adapter(client.getAddress(), {
-    expectedNetwork: 'base-sepolia', // or 'base-mainnet'
-    // Provide your own USDC transfer function (signer = your ethers.Wallet)
-    transferFn: async (to, amount) => {
-      const usdc = new ethers.Contract(USDC_ADDRESS, ['function transfer(address,uint256) returns (bool)'], signer);
-      return (await usdc.transfer(to, amount)).hash;
-    },
-  }));
-await client.basic.pay({ to: 'https://...' });
+// RIGHT — explicit opt-in (SDK 3.3.0+, auto-registered)
+await client.pay({ to: 'https://...', metadata: { paymentMethod: 'x402' } });
 ```
 
 ## Sharp Edges
@@ -780,7 +752,7 @@ await client.basic.pay({ to: 'https://...' });
 | Missing `release()` on testnet/mainnet | critical | Always call `release()` — mock auto-releases but real networks don't |
 | Hardcoded private keys | critical | Use keystore + `ACTP_KEY_PASSWORD` or `ACTP_PRIVATE_KEY` env var |
 | ServiceDirectory not cross-process | high | Pass provider address explicitly |
-| x402 adapter not registered | high | Call `client.registerAdapter(new X402Adapter(...))` first |
+| x402 opt-in missing | high | Add `metadata: { paymentMethod: 'x402' }` to `client.pay()` for HTTPS URLs |
 | Service name mismatch | high | `provide('code-review')` only matches `request('code-review')` — exact string |
 | Mainnet $1,000 limit | medium | Security limit on unaudited contracts |
 | Base Sepolia RPC rate limits | medium | Set `BASE_SEPOLIA_RPC` to Alchemy or publicnode.com |
@@ -831,7 +803,7 @@ All commands support `--json` for machine-readable output and `-q`/`--quiet` for
 | RPC 503 errors | Set `BASE_SEPOLIA_RPC` to Alchemy or publicnode.com |
 | Mainnet $1,000 limit | Security limit on unaudited contracts |
 | x402 payment not refundable | By design — x402 is instant/atomic. Use ACTP escrow for dispute protection |
-| "No adapter found" | Register the required adapter (X402Adapter for URLs, ERC-8004 bridge for agent IDs) |
+| "No adapter found" | X402Adapter auto-registers for URLs (SDK 3.3.0+); for agent IDs configure ERC-8004 bridge |
 
 ## Environment Variables
 
