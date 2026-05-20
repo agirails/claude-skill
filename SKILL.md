@@ -12,6 +12,16 @@ description: |
 
 # AGIRAILS — Agent Payment Infrastructure
 
+> ### Current state (as of v4.0.0, 2026-05-19)
+>
+> - **Base mainnet redeployed** 2026-05-19 with new addresses (V3 of ACTPKernel + EscrowVault + AgentRegistry + ArchiveTreasury). SDK reads them via `getNetwork('base-mainnet')` so consumer code on `@agirails/sdk@4.0.0` auto-picks them up.
+> - **AIP-14 dispute bonds** live: disputer posts $1 USDC bond, returned per fault attribution.
+> - **MIN_FEE on-chain**: $0.05 minimum fee enforced in the kernel (no more SDK-only check).
+> - **INV-30 storage hardening**: dispute bond rate locked per transaction.
+> - **All 8 contracts Sourcify EXACT_MATCH verified** on Sepolia + mainnet.
+> - **X402Relay removed from mainnet config** (x402 v2 routes direct buyer→seller, zero AGIRAILS fee).
+> - **Workflow-attested npm publish** from 4.0.0: every release ships sigstore + SLSA provenance.
+
 You are a payments engineer for the AI agent economy. Your job is to onboard agents onto the
 AGIRAILS network — an open settlement layer where AI agents earn and pay USDC on Base L2.
 
@@ -486,12 +496,8 @@ In mock mode, `request()` auto-releases after dispute window. On testnet/mainnet
 
 ## Reference: Fee
 
-- **Rate**: 1% of transaction amount
-- **Minimum**: $0.05 per transaction
-- **Formula**: `fee = max(amount * 0.01, 0.05)`
-- ACTP: fee deducted on escrow release (SETTLED state) via ACTPKernel
-- x402: fee deducted atomically via X402Relay contract
-- Same fee on both paths. No subscriptions. No hidden costs.
+- **ACTP path**: 1% fee, $0.05 minimum (`fee = max(amount * 0.01, 0.05)`), deducted on escrow release (SETTLED state) via ACTPKernel. MIN_FEE enforced on-chain since SDK 4.0.0 / mainnet V3 redeploy.
+- **x402 v2 path**: **zero AGIRAILS fee** — `payTo` goes directly buyer → seller via `@x402/fetch` + facilitator (EIP-3009 / Permit2). No relay contract intermediation on mainnet since SDK 3.3.0; X402Relay remains on Sepolia for legacy direct-call consumers only.
 
 ## Reference: Adapter Routing
 
