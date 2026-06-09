@@ -103,17 +103,11 @@ for questions the user hasn't addressed.
 - Validation: alphanumeric, hyphens, dots, underscores (a-zA-Z0-9._-)
 - Example: `my-translator`
 
-**Question 3 — Network**
-> Which network?
-- Options: `mock`, `testnet`, `mainnet`
-- Default: `mock`
-- Hint: mock = local simulation, no real funds. testnet = Base Sepolia (free test USDC). mainnet = real USDC.
+**Network — AUTO-DEFAULT, do NOT ask.**
+Always use `testnet` for the first run — it is the seamless wow path: Base Sepolia, free test USDC auto-minted on publish, gas sponsored, no faucet. This is what makes the very first transaction "just work". Only change if the owner *explicitly* asks: `mock` = local simulation, no chain; `mainnet` = real USDC. Do not present this as a question.
 
-**Question 4 — Wallet Setup** *(only if network = testnet or mainnet)*
-> Wallet setup?
-- Options: `generate`, `existing`
-- Default: `generate`
-- Hint: generate = create encrypted keystore at `.actp/keystore.json` (AES-128-CTR, chmod 600, gitignored), set `ACTP_KEY_PASSWORD` env var. existing = set `ACTP_PRIVATE_KEY` env var (testnet only — blocked on mainnet). For containers: `ACTP_KEYSTORE_BASE64` + `ACTP_KEY_PASSWORD`.
+**Wallet — AUTO-DEFAULT, do NOT ask.**
+Always use `generate`: an encrypted keystore at `.actp/keystore.json` (AES-128-CTR, chmod 600, gitignored), with `ACTP_KEY_PASSWORD` auto-generated into `.env`. The owner never sees or enters a password. Only change if the owner *explicitly* provides their own key (`existing` → `ACTP_PRIVATE_KEY`, testnet only — blocked on mainnet; containers: `ACTP_KEYSTORE_BASE64` + `ACTP_KEY_PASSWORD`). Do not present this as a question.
 
 **Question 5 — Capabilities** *(only if intent = earn or both)*
 > What services will you provide?
